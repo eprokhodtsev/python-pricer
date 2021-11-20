@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 class Interpolator:
     """Linear interpolator.
     """
@@ -36,45 +35,51 @@ class Interpolator:
 import pandas as pd
 import numpy as np
 import datetime
+from dateutil.relativedelta import relativedelta
+
+def get_date(date):
+  if "D" in date:
+    return relativedelta(days=int(date[:-1]))
+  elif "W" in date:
+    return relativedelta(weeks=int(date[:-1]))
+  elif "M" in date:
+    return relativedelta(months=int(date[:-1]))
+  elif "Y" in date:
+    return relativedelta(years=int(date[:-1]))
+  return relativedelta()
+
+class Curves:
+  def __init__(self):
+    self.load_data()
+
+  def load_data(self,
+                rub='/content/python-pricer/data/RUB swap points.csv',
+                usd='/content/python-pricer/data/USD rates.csv',
+                today=datetime.date.today()):
+    self.rub = pd.read_csv(rub)
+    self.usd = pd.read_csv(usd)
+    self.usd.loc[0,'Conv, adj'] = self.usd.loc[0,'Unnamed: 1']
+
+    self.today = today
+    self.rub['date'] = pd.to_datetime(self.rub['Term'].apply(lambda x: get_date(x) + self.today))
+    self.rub['date_sec'] = self.rub['date'].apply(lambda x: x.timestamp())
+    self.rub['date_day'] = self.rub['Term'].apply(lambda x: get_date(x).days)
+  
+  def swop_point(self, date='12/15/21'):
+    date = datetime.datetime.strptime(date, '%m/%d/%y')
+    #return np.interp(date.timestamp(), self.rub['date_sec'], self.rub['SW POINTS'])
+    return Interpolator.interpolate(list(self.rub['date_sec']), list(self.rub['SW POINTS']), date.timestamp())
+  
+  def discount_factor(self, date):
+    return [(i, 1) for i in date]
+
+  def swop_point_curve(self, date):
+    return list(map(lambda x: (x, self.swop_point(x)), date))
 
 rub = pd.read_csv('/content/python-pricer/data/RUB swap points.csv')
 usd = pd.read_csv('/content/python-pricer/data/USD rates.csv')
 usd.loc[0,'Conv, adj'] = usd.loc[0,'Unnamed: 1']
 
-today = datetime.date.today()
-
-tenor_dict = {
-    "ON": pd.Timedelta("0 D"),
-    '1W': pd.Timedelta("1 W"),
-    '2W': pd.Timedelta("2 W"),
-    '1M': pd.Timedelta("30 D"),
-    '2M': pd.Timedelta("60 D"),
-    '3M': pd.Timedelta("90 D"),
-    '6M': pd.Timedelta("180 D"),
-    '9M': pd.Timedelta("270 D"),
-    '12M': pd.Timedelta("1 Y"),
-    '2Y': pd.Timedelta("2 Y"),
-    '3Y': pd.Timedelta("3 Y"),
-    '4Y': pd.Timedelta("4 Y"),
-    '5Y': pd.Timedelta("5 Y")
-}
-
-rub['date'] = pd.to_datetime(rub['Term'].apply(lambda x: tenor_dict[x] + today))
-rub['date_sec'] = rub['date'].apply(lambda x: x.timestamp())
-
-rub['date_day'] = rub['Term'].apply(lambda x: tenor_dict[x].days)
-
-rub
-
-def swop_point(date='12/15/21'):
-  date = datetime.datetime.strptime(date, '%m/%d/%y')
-  #return np.interp(date.timestamp(), rub['date_sec'], rub['SW POINTS'])
-  return Interpolator.interpolate(list(rub['date_sec']), list(rub['SW POINTS']), date.timestamp())
-
-swop_point()
-
-usd['StartDate'].apply(swop_point).plot()
-
-temp = [1] * len(usd)
-discount = pd.DataFrame(temp, index=usd['StartDate'])
-discount
+curve = Curves()
+print(curve.swop_point_curve(usd['StartDate'].values))
+print(curve.discount_factor(usd['StartDate'].values))
